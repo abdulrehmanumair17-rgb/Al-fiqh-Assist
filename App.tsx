@@ -1,4 +1,3 @@
-
 import React, { useState, useRef, useEffect } from 'react';
 import { 
   Send, BookOpen, Menu, Plus, Brain, Zap, Loader2, 
@@ -38,18 +37,24 @@ const App: React.FC = () => {
   const scrollRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setUser(session?.user ?? null);
-      setIsAuthLoading(false);
+    // Initial Session Check
+    const checkSession = async () => {
+      const { data: { session } } = await supabase.auth.getSession();
       if (session?.user) {
+        setUser(session.user);
         fetchChatHistory(session.user.id);
       }
-    });
+      setIsAuthLoading(false);
+    };
+    
+    checkSession();
 
+    // Listen for Auth changes
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-      setUser(session?.user ?? null);
-      if (session?.user) {
-        fetchChatHistory(session.user.id);
+      const currentUser = session?.user ?? null;
+      setUser(currentUser);
+      if (currentUser) {
+        fetchChatHistory(currentUser.id);
       } else {
         setMessages([]);
         setView('home');
@@ -119,19 +124,24 @@ const App: React.FC = () => {
 
     try {
       if (authMode === 'login') {
-        const { error } = await supabase.auth.signInWithPassword({ email, password });
+        const { error } = await supabase.auth.signInWithPassword({ 
+          email: email.trim(), 
+          password: password.trim() 
+        });
         if (error) throw error;
       } else {
         const { error } = await supabase.auth.signUp({ 
-          email, 
-          password,
-          options: { emailRedirectTo: window.location.origin }
+          email: email.trim(), 
+          password: password.trim(),
+          options: {
+            emailRedirectTo: window.location.origin,
+          }
         });
         if (error) throw error;
-        setAuthSuccess('Scholarly account created. Please check your email inbox to verify your address before logging in.');
+        setAuthSuccess('Registration successful. Please check your email for a verification link to activate your portal access.');
       }
     } catch (error: any) {
-      setAuthError(error.message || 'Authentication failed');
+      setAuthError(error.message || 'Authentication process failed.');
     } finally {
       setIsAuthLoading(false);
     }
@@ -139,6 +149,7 @@ const App: React.FC = () => {
 
   const handleLogout = async () => {
     await supabase.auth.signOut();
+    setUser(null);
     setView('home');
     setMessages([]);
     setEmail('');
@@ -236,7 +247,18 @@ const App: React.FC = () => {
     }
   };
 
-  if (!user && !isAuthLoading) {
+  if (isAuthLoading) {
+    return (
+      <div className="min-h-screen bg-[#fdfbf7] flex items-center justify-center">
+        <div className="flex flex-col items-center gap-4">
+          <Loader2 className="animate-spin text-emerald-800" size={48} />
+          <p className="text-[10px] font-black uppercase tracking-[0.3em] text-emerald-900/40">Verifying Session</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (!user) {
     return (
       <div className="min-h-screen bg-[#fdfbf7] flex items-center justify-center p-4 md:p-8 font-inter">
         <div className="absolute inset-0 overflow-hidden pointer-events-none opacity-20">
@@ -332,17 +354,9 @@ const App: React.FC = () => {
           
           <div className="bg-emerald-50/50 p-6 border-t border-emerald-100 flex items-center justify-center gap-2">
             <ShieldCheck size={14} className="text-emerald-600" />
-            <span className="text-[10px] font-black text-emerald-900/60 uppercase tracking-widest text-center">Email-based Secure Scholarly Verification</span>
+            <span className="text-[10px] font-black text-emerald-900/60 uppercase tracking-widest text-center">Secure Email-based Verification</span>
           </div>
         </div>
-      </div>
-    );
-  }
-
-  if (isAuthLoading) {
-    return (
-      <div className="min-h-screen bg-[#fdfbf7] flex items-center justify-center">
-        <Loader2 className="animate-spin text-emerald-800" size={40} />
       </div>
     );
   }
