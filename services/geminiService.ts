@@ -36,12 +36,14 @@ function isKeyError(error: any): boolean {
   const errorStr = JSON.stringify(error).toLowerCase();
   return (
     errorStr.includes("401") || 
+    errorStr.includes("403") ||
     errorStr.includes("400") || 
     errorStr.includes("unauthorized") || 
     errorStr.includes("invalid_api_key") || 
-    errorStr.includes("api key not found") || 
+    errorStr.includes("key not found") || 
     errorStr.includes("expired") || 
-    errorStr.includes("api_key_invalid")
+    errorStr.includes("api_key_invalid") ||
+    errorStr.includes("requested entity was not found")
   );
 }
 
@@ -51,9 +53,12 @@ export interface StreamOutput {
 }
 
 export class GeminiService {
-  // Re-initialize for every call to ensure we use the most recent key from process.env.API_KEY
   private getAI() {
-    return new GoogleGenAI({ apiKey: process.env.API_KEY || '' });
+    const apiKey = process.env.API_KEY;
+    if (!apiKey || apiKey === "undefined" || apiKey === "") {
+        throw new Error("INVALID_KEY");
+    }
+    return new GoogleGenAI({ apiKey });
   }
 
   async *sendMessageStream(
@@ -117,7 +122,7 @@ export class GeminiService {
         }
       }
     } catch (error: any) {
-      if (isKeyError(error)) {
+      if (isKeyError(error) || error.message === "INVALID_KEY") {
         throw new Error("INVALID_KEY");
       }
       if (isQuotaError(error)) {
@@ -129,8 +134,8 @@ export class GeminiService {
   }
 
   async generateSpeech(text: string, voiceName: string = 'Kore'): Promise<string> {
-    const ai = this.getAI();
     try {
+      const ai = this.getAI();
       const response = await ai.models.generateContent({
         model: "gemini-2.5-flash-preview-tts",
         contents: [{ parts: [{ text: text }] }],

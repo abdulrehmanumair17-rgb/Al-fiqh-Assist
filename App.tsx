@@ -264,8 +264,13 @@ const App: React.FC = () => {
 
     } catch (e: any) {
       let errorMsg = t.errorGeneral;
-      if (e.message === "INVALID_KEY") errorMsg = "API Session Expired.";
-      else if (e.message === "QUOTA_EXHAUSTED") errorMsg = t.errorQuota;
+      if (e.message === "INVALID_KEY") {
+        errorMsg = "The Scholarly Archive connection is offline (API Key required).";
+        setErrorState({ message: "API Session Expired or Missing. Please select a valid key to restore access.", type: 'key' });
+      } else if (e.message === "QUOTA_EXHAUSTED") {
+        errorMsg = t.errorQuota;
+        setErrorState({ message: t.errorQuota, type: 'quota' });
+      }
       
       setMessages(prev => prev.map(m => 
         m.id === assistantMsgId ? { ...m, content: errorMsg } : m
@@ -514,7 +519,7 @@ const App: React.FC = () => {
               <div className="flex items-center gap-4 flex-1">
                 <AlertCircle className="text-red-600 flex-shrink-0" size={32} />
                 <div>
-                  <p className="text-sm font-black text-red-900 uppercase tracking-wide">Error Detected</p>
+                  <p className="text-sm font-black text-red-900 uppercase tracking-wide">Connection Interrupted</p>
                   <p className="text-sm font-medium text-red-800/80">{errorState.message}</p>
                 </div>
               </div>
