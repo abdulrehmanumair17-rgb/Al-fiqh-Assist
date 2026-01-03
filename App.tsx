@@ -4,7 +4,7 @@ import {
   Home, ChevronRight, Scale, Wallet, Heart, ShieldCheck, 
   AlertCircle, Key, RefreshCw,
   LogOut, User as UserIcon, Mail, Lock, CheckCircle2,
-  History, MessageSquare
+  History, MessageSquare, ArrowLeft
 } from 'lucide-react';
 import { Message, Language, VoiceType } from './types';
 import { geminiService } from './services/geminiService';
@@ -15,7 +15,7 @@ import { supabase } from './services/supabaseClient';
 const App: React.FC = () => {
   // Auth States
   const [user, setUser] = useState<any>(null);
-  const [authMode, setAuthMode] = useState<'login' | 'signup'>('login');
+  const [authMode, setAuthMode] = useState<'login' | 'signup' | 'reset'>('login');
   const [isAuthLoading, setIsAuthLoading] = useState(true);
   const [authError, setAuthError] = useState<string | null>(null);
   const [authSuccess, setAuthSuccess] = useState<string | null>(null);
@@ -122,26 +122,54 @@ const App: React.FC = () => {
     setAuthSuccess(null);
     setIsAuthLoading(true);
 
+    const cleanEmail = email.trim();
+    const cleanPassword = password.trim();
+
     try {
       if (authMode === 'login') {
-        const { error } = await supabase.auth.signInWithPassword({ 
-          email: email.trim(), 
-          password: password.trim() 
+        const { data, error } = await supabase.auth.signInWithPassword({ 
+          email: cleanEmail, 
+          password: cleanPassword 
         });
-        if (error) throw error;
-      } else {
-        const { error } = await supabase.auth.signUp({ 
-          email: email.trim(), 
-          password: password.trim(),
+        
+        if (error) {
+          if (error.message.includes("Email not confirmed")) {
+            throw new Error("Your email address has not been verified yet. Please check your inbox for the verification link.");
+          }
+          throw error;
+        }
+
+        if (data.user) {
+          setUser(data.user);
+        }
+      } else if (authMode === 'signup') {
+        const { data, error } = await supabase.auth.signUp({ 
+          email: cleanEmail, 
+          password: cleanPassword,
           options: {
             emailRedirectTo: window.location.origin,
           }
         });
+
         if (error) throw error;
-        setAuthSuccess('Registration successful. Please check your email for a verification link to activate your portal access.');
+
+        if (data.user && data.session) {
+          setUser(data.user);
+        } else {
+          setAuthSuccess('Registration submitted. Please check your email and click the verification link to activate your account.');
+          setEmail('');
+          setPassword('');
+        }
+      } else if (authMode === 'reset') {
+        const { error } = await supabase.auth.resetPasswordForEmail(cleanEmail, {
+          redirectTo: window.location.origin,
+        });
+        if (error) throw error;
+        setAuthSuccess('Password reset link has been sent to your email.');
+        setEmail('');
       }
     } catch (error: any) {
-      setAuthError(error.message || 'Authentication process failed.');
+      setAuthError(error.message || 'Authentication process failed. Please check your inputs.');
     } finally {
       setIsAuthLoading(false);
     }
@@ -252,7 +280,7 @@ const App: React.FC = () => {
       <div className="min-h-screen bg-[#fdfbf7] flex items-center justify-center">
         <div className="flex flex-col items-center gap-4">
           <Loader2 className="animate-spin text-emerald-800" size={48} />
-          <p className="text-[10px] font-black uppercase tracking-[0.3em] text-emerald-900/40">Verifying Session</p>
+          <p className="text-[10px] font-black uppercase tracking-[0.3em] text-emerald-900/40">Securing Session</p>
         </div>
       </div>
     );
@@ -276,24 +304,24 @@ const App: React.FC = () => {
             
             <div className="text-center mb-10">
               <h2 className="text-3xl font-black text-emerald-950 tracking-tight mb-2">
-                {authMode === 'login' ? 'Scholarly Login' : 'Portal Registration'}
+                {authMode === 'login' ? 'Scholarly Login' : authMode === 'signup' ? 'Portal Registration' : 'Recover Access'}
               </h2>
               <p className="text-slate-500 text-sm font-medium">
-                {authMode === 'login' ? 'Access the verified Fiqh archives' : 'Register to save your scholarly research'}
+                {authMode === 'login' ? 'Access the verified Fiqh archives' : authMode === 'signup' ? 'Register to save your scholarly research' : 'Enter your email to receive a recovery link'}
               </p>
             </div>
 
             {authError && (
-              <div className="mb-6 p-4 bg-red-50 border border-red-100 rounded-2xl flex items-center gap-3 text-red-700 text-xs font-bold animate-in">
-                <AlertCircle size={16} className="flex-shrink-0" />
-                {authError}
+              <div className="mb-6 p-4 bg-red-50 border border-red-100 rounded-2xl flex items-start gap-3 text-red-700 text-xs font-bold animate-in">
+                <AlertCircle size={16} className="flex-shrink-0 mt-0.5" />
+                <span>{authError}</span>
               </div>
             )}
 
             {authSuccess && (
-              <div className="mb-6 p-4 bg-emerald-50 border border-emerald-100 rounded-2xl flex items-center gap-3 text-emerald-700 text-xs font-bold animate-in">
-                <CheckCircle2 size={16} className="flex-shrink-0" />
-                {authSuccess}
+              <div className="mb-6 p-4 bg-emerald-50 border border-emerald-100 rounded-2xl flex items-start gap-3 text-emerald-700 text-xs font-bold animate-in">
+                <CheckCircle2 size={16} className="flex-shrink-0 mt-0.5" />
+                <span>{authSuccess}</span>
               </div>
             )}
 
@@ -309,17 +337,32 @@ const App: React.FC = () => {
                   onChange={(e) => setEmail(e.target.value)}
                 />
               </div>
-              <div className="group relative">
-                <Lock className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-emerald-600 transition-colors" size={18} />
-                <input 
-                  type="password"
-                  required
-                  placeholder="Password"
-                  className="w-full pl-12 pr-6 py-4 bg-emerald-50/50 border border-emerald-100 rounded-2xl outline-none focus:ring-4 ring-emerald-500/10 focus:border-emerald-300 transition-all font-medium text-emerald-950 placeholder:text-slate-400"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                />
-              </div>
+              
+              {authMode !== 'reset' && (
+                <div className="group relative">
+                  <Lock className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-emerald-600 transition-colors" size={18} />
+                  <input 
+                    type="password"
+                    required
+                    placeholder="Password"
+                    className="w-full pl-12 pr-6 py-4 bg-emerald-50/50 border border-emerald-100 rounded-2xl outline-none focus:ring-4 ring-emerald-500/10 focus:border-emerald-300 transition-all font-medium text-emerald-950 placeholder:text-slate-400"
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                  />
+                </div>
+              )}
+              
+              {authMode === 'login' && (
+                <div className="flex justify-end px-1">
+                  <button 
+                    type="button"
+                    onClick={() => setAuthMode('reset')}
+                    className="text-[10px] font-black uppercase text-emerald-700/60 hover:text-emerald-700 transition-colors tracking-widest"
+                  >
+                    Forgot Password?
+                  </button>
+                </div>
+              )}
               
               <button 
                 type="submit"
@@ -329,32 +372,46 @@ const App: React.FC = () => {
                 {isAuthLoading ? (
                   <Loader2 className="animate-spin" size={16} />
                 ) : (
-                  authMode === 'login' ? 'Enter Portal' : 'Register Now'
+                  authMode === 'login' ? 'Enter Portal' : authMode === 'signup' ? 'Create Account' : 'Send Reset Link'
                 )}
               </button>
+
+              {authMode === 'reset' && (
+                <button 
+                  type="button"
+                  onClick={() => setAuthMode('login')}
+                  className="w-full py-4 text-emerald-900/60 font-black uppercase text-[10px] tracking-widest flex items-center justify-center gap-2 hover:text-emerald-900 transition-colors"
+                >
+                  <ArrowLeft size={14} /> Back to Login
+                </button>
+              )}
             </form>
 
-            <div className="mt-8 text-center">
-              <button 
-                onClick={() => {
-                  setAuthMode(authMode === 'login' ? 'signup' : 'login');
-                  setAuthError(null);
-                  setAuthSuccess(null);
-                }}
-                className="text-xs font-bold text-emerald-700 hover:text-emerald-800 transition-colors flex items-center justify-center gap-2 mx-auto"
-              >
-                {authMode === 'login' ? (
-                  <>Don't have an account? <span className="underline decoration-emerald-200 underline-offset-4">Sign Up</span></>
-                ) : (
-                  <>Already have an account? <span className="underline decoration-emerald-200 underline-offset-4">Login</span></>
-                )}
-              </button>
-            </div>
+            {authMode !== 'reset' && (
+              <div className="mt-8 text-center">
+                <button 
+                  onClick={() => {
+                    setAuthMode(authMode === 'login' ? 'signup' : 'login');
+                    setAuthError(null);
+                    setAuthSuccess(null);
+                    setEmail('');
+                    setPassword('');
+                  }}
+                  className="text-xs font-bold text-emerald-700 hover:text-emerald-800 transition-colors flex items-center justify-center gap-2 mx-auto"
+                >
+                  {authMode === 'login' ? (
+                    <>Don't have an account? <span className="underline decoration-emerald-200 underline-offset-4">Sign Up</span></>
+                  ) : (
+                    <>Already have an account? <span className="underline decoration-emerald-200 underline-offset-4">Login</span></>
+                  )}
+                </button>
+              </div>
+            )}
           </div>
           
           <div className="bg-emerald-50/50 p-6 border-t border-emerald-100 flex items-center justify-center gap-2">
             <ShieldCheck size={14} className="text-emerald-600" />
-            <span className="text-[10px] font-black text-emerald-900/60 uppercase tracking-widest text-center">Secure Email-based Verification</span>
+            <span className="text-[10px] font-black text-emerald-900/60 uppercase tracking-widest text-center">Secure Scholarly Verification</span>
           </div>
         </div>
       </div>
